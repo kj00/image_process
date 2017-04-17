@@ -2,70 +2,117 @@ library(RSelenium)
 library(magrittr)
 library(tidyverse)
 
-## Not run: 
-# start a chrome browser
+
+### prepare scraping ------------------------------------------------------------
+
+## start a chrome browser
 rD <- rsDriver()
 remDr <- rD[["client"]]
-remDr$open()
 remDr$navigate("https://twitter.com/bs_ponta")
 
-
-
-#total tweets
+# total tweets
 tt = 346
+
 # scroll down until all tweets are appeared
-remDr$executeScript("scroll(0, 100000000);", args = list())
+# ** times scroll
+walk(1:100,
+     ~ remDr$executeScript("scroll(0, 100000000);", args = list()))
 
+### scrape information ---------------------------------------------------------
 
-# tweet contents
-wl =remDr$findElements(using = "xpath",
-                   value = "//p[@class='TweetTextSize TweetTextSize--normal js-tweet-text tweet-text']")
-length(wl) == tt
+## tweet contents
+wl = remDr$findElements(using = "xpath",
+                        value = "//p[@class='TweetTextSize TweetTextSize--normal js-tweet-text tweet-text']")
 
 system.time({
-  tw_content <- map(seq_along(wl), ~ wl[[.x]]$getElementText()) %>% unlist()
-  })
+  tw_content <-
+    map(seq_along(wl), ~ wl[[.x]]$getElementText()) %>% unlist()
+})
 
+# check
 length(tw_content) == tt
 
-# tweet time
-wl =remDr$findElements(using = "xpath",
-                       value = "//a[@class='tweet-timestamp js-permalink js-nav js-tooltip']")
-length(wl) == tt
+## tweet time
+wl = remDr$findElements(using = "xpath",
+                        value = "//a[@class='tweet-timestamp js-permalink js-nav js-tooltip']")
 
-tmp <- wl[[4]]$getElementAttribute("outerHTML")
+# extract HTML source of elements.
+# getAlementAttribute("data-origin-time") doesen't work,
+# probably due to back slash in the source: \...\
+system.time({
+  tw_time <-
+    map(seq_along(wl), ~ wl[[.x]]$getElementAttribute("outerHTML"))
+})
 
-tmp[[1]] %>%
-  stringr::str_extract('[0-9]:(.+?)日')
+# extract time from html
+tw_time %>%
+  unlist() %>%
+  stringr::str_extract('[0-9]:(.+?)日') -> tw_time
 
-guess_encoding(html[[1]])
+length(tw_time) == tt
 
-tmp[[1]] %>% 
-  html() %>% 
-  html_attr(name = "data-original-itle")
+## number of retweets
+wl = remDr$findElements(using = "xpath",
+                        value = "//button[@class='ProfileTweet-actionButton  js-actionButton js-actionRetweet']")
 
-library(rvest)
-rvest::html_attrs(html[[1]])
-?rvest::html()
+system.time({
+  tw_retweet <- map(seq_along(wl), ~ wl[[.x]]$getElementText())
+})
 
+tw_retweet %>%
+  unlist() %>%
+  stringr::str_replace(",", "") %>%
+  stringr::str_extract("[0-9]+") %>%
+  as.numeric() -> tw_retweet
 
-wl[[12]]$getElementAttribute("data-original-title")
+length(tw_retweet) == tt
 
-wl[[1]]$
+## number of facorite
+wl = remDr$findElements(using = "xpath",
+                        value = "//button[@class='ProfileTweet-actionButton js-actionButton js-actionFavorite']")
+
+system.time({
+  tw_fav <- map(seq_along(wl), ~ wl[[.x]]$getElementText())
+})
+
+tw_fav %>%
+  unlist() %>%
+  stringr::str_replace(",", "") %>%
+  stringr::str_extract("[0-9]+") %>%
+  as.numeric() -> tw_fav
+
+length(tw_fav) == tt
+
+## image source
+wl = remDr$findElements(using = "xpath",
+                        value = "//div[@class='content']")
 
 
 system.time({
-  tw_content <- map(seq_along(wl), ~ wl[[.x]]$getElementText()) 
+  img_source <-
+    map(seq_along(wl), ~ wl[[.x]]$getElementAttribute("outerHTML"))
 })
 
 
-library(magrittr)
-wl
+img_source %>%
+  unlist() %>%
+  stringr::str_extract('src=\"https://pbs.twimg.com/media.+jpg') %>%
+  stringr::str_replace('^src=\"', "") -> img_source
+
+length(img_source) == tt
+
+
+### save df
+tw_df <- tibble(
+  id = seq_along(wl),
+  time = tw_time,
+  content = tw_content,
+  num_retweet = tw_retweet,
+  num_fav = tw_fav,
+  img_source = img_source
+)
+
+saveRDS(tw_df, "tw_df.rds")
 
 
 
-
-
-
-# stop the selenium server
-rD[["server"]]$stop() 
