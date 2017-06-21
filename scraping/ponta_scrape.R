@@ -1,6 +1,8 @@
 library(RSelenium)
 library(magrittr)
 library(tidyverse)
+library(stringr)
+library(lubridate)
 
 
 ### prepare scraping ------------------------------------------------------------
@@ -11,7 +13,7 @@ remDr <- rD[["client"]]
 remDr$navigate("https://twitter.com/bs_ponta")
 
 # total tweets
-tt = 346
+tt = 371
 
 # scroll down until all tweets are appeared
 # ** times scroll
@@ -105,7 +107,14 @@ length(img_source) == tt
 ### save df
 tw_df <- tibble(
   id = seq_along(wl),
-  time = tw_time,
+  hs = tw_time %>% 
+    str_split(" - ") %>% 
+    map_chr(~.[[1]]) %>% 
+    hm(),
+  ymd = tw_time %>% 
+    str_split(" - ") %>% 
+    map_chr(~.[[2]]) %>% 
+    ymd(),
   content = tw_content,
   num_retweet = tw_retweet,
   num_fav = tw_fav,
